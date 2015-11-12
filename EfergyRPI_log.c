@@ -138,14 +138,14 @@ captured; otherwise, set to -1 to disable this feature */
 
 int analysis_wavecenter;
 
-#define LOGTYPE         1   // Allows changing line-endings - 0 is for Unix /n, 1 for Windows /r/n
+#define LOGTYPE         0   // Allows changing line-endings - 0 is for Unix /n, 1 for Windows /r/n
 #define SAMPLES_TO_FLUSH    10  // Number of samples taken before writing to file.
 // Setting this too low will cause excessive wear to flash due to updates to
 // filesystem! You have been warned! Set to 10 samples for 6 seconds = every min.
 int loggingok;   // Global var indicating logging on or off
 int samplecount; // Global var counter for samples taken since last flush
 FILE *fp;    // Global var file handle
-
+int current_day=-1;
 // Instead of processing frames bit by bit as samples arrive from rtl_fm, all samples are stored once a preamble is detected until
 // enough samples have been saved to cover the expected maximum frame size.  This maximum number of samples needed for a frame
 // is an estimate with padding which will hopefully be enough to store a full frame with some extra.
@@ -312,6 +312,7 @@ void display_frame_data(int debug_level, char *msg, unsigned char bytes[], int b
 
     time_t ltime;
     char buffer[80];
+    char filename[80];
     time( &ltime );
     struct tm *curtime = localtime( &ltime );
     strftime(buffer, 80, "%x,%X", curtime);
@@ -359,6 +360,25 @@ void display_frame_data(int debug_level, char *msg, unsigned char bytes[], int b
         }
     } else if (data_ok_str != (char *) 0) {
         printf("%s,%f\n", buffer, result);
+	if(current_day!=curtime->tm_mday){
+            printf("new day\n");
+            if (fp != NULL) {
+                printf("close file\n");
+                fflush(fp);
+                fclose(fp);
+		fp == NULL;
+            }
+		
+            strftime(filename, 80, "/home/pi/log_ecowatt_brut/%y%m%d_ecowatt", curtime);
+            printf("new file : %s\n",filename);
+            fp=fopen(filename, "a");
+            if (fp == NULL) {
+                fprintf(stderr, "\nFailed to open log file!\n");
+            }else{
+                current_day=curtime->tm_mday;
+            }
+	}
+
         if (loggingok) {
             if (LOGTYPE) {
                 fprintf(fp, "%s,%f\r\n", buffer, result);
@@ -446,13 +466,13 @@ void  main (int argc, char**argv)
     } else if ((argc == 2) && (strcmp(argv[1], "-d") == 0))
         debug_level = 3;
     else if (argc == 2) {
-        fp = fopen(argv[1], "a"); // Log file opened in append mode to avoid destroying data
+        //fp = fopen(argv[1], "a"); // Log file opened in append mode to avoid destroying data
         samplecount = 0; // Reset sample counter
         loggingok = 1;
-        if (fp == NULL) {
+        /*if (fp == NULL) {
             fprintf(stderr, "\nFailed to open log file!\n");
             exit(EXIT_FAILURE);
-        }
+        }*/
     } else {
         loggingok = 0;
     }

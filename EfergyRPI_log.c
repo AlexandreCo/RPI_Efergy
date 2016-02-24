@@ -174,359 +174,353 @@ int sample_storage[SAMPLE_STORE_SIZE];
 int sample_store_index;
 
 int decode_bytes_from_pulse_counts(int pulse_store[], int pulse_store_index, unsigned char bytes[]) {
-    int i;
-    int dbit = 0;
-    int bitpos = 0;
-    unsigned char bytedata = 0;
-    int bytecount = 0;
+	int i;
+	int dbit = 0;
+	int bitpos = 0;
+	unsigned char bytedata = 0;
+	int bytecount = 0;
 
-    for (i = 0; i < FRAMEBYTECOUNT; i++)
-        bytes[i] = 0;
-    for (i = 0; i < pulse_store_index; i++) {
-        if (pulse_store[i] > MINLOWBITS) {
-            dbit++;
-            bitpos++;
-            bytedata = bytedata << 1;
-            if (pulse_store[i] > MINHIGHBITS)
-                bytedata = bytedata | 0x1;
-            if (bitpos > 7) {
-                bytes[bytecount] = bytedata;
-                bytedata = 0;
-                bitpos = 0;
-                bytecount++;
-                if (bytecount == FRAMEBYTECOUNT) {
-                    return bytecount;
-                }
-            }
-        }
-    }
-    return bytecount;
+	for (i = 0; i < FRAMEBYTECOUNT; i++)
+		bytes[i] = 0;
+	for (i = 0; i < pulse_store_index; i++) {
+		if (pulse_store[i] > MINLOWBITS) {
+			dbit++;
+			bitpos++;
+			bytedata = bytedata << 1;
+			if (pulse_store[i] > MINHIGHBITS)
+				bytedata = bytedata | 0x1;
+			if (bitpos > 7) {
+				bytes[bytecount] = bytedata;
+				bytedata = 0;
+				bitpos = 0;
+				bytecount++;
+				if (bytecount == FRAMEBYTECOUNT) {
+					return bytecount;
+				}
+			}
+		}
+	}
+	return bytecount;
 }
 
 unsigned char compute_checksum(unsigned char bytes[], int bytecount) {
-    // Calculate simple 1 byte checksum on message bytes
-    unsigned char tbyte = 0x00;
-    int i;
-    for (i = 0; i < (bytecount - 1); i++) {
-        tbyte += bytes[i];
-    }
-    return tbyte;
+	// Calculate simple 1 byte checksum on message bytes
+	unsigned char tbyte = 0x00;
+	int i;
+	for (i = 0; i < (bytecount - 1); i++) {
+		tbyte += bytes[i];
+	}
+	return tbyte;
 }
 
-uint16_t compute_crc(unsigned char bytes[], int bytecount) {
-    // Calculate  CRC-CCIT (Xmodem)  crc using 0x1021 polynomial
-    uint16_t crc = 0;
-    int i;
-    for (i = 0; i < bytecount - 2; i++) {
-        crc = crc ^ ((uint16_t) bytes[i] << 8);
-        int j;
-        for (j = 0; j < 8; j++) {
-            if (crc & 0x8000)
-                crc = (crc << 1) ^ 0x1021;
-            else
-                crc <<= 1;
-        }
-    }
-    return crc;
-}
 
 int calculate_wave_center(int *avg_positive_sample, int *avg_negative_sample) {
-    int i;
-    int64_t avg_neg = 0;
-    int64_t avg_pos = 0;
-    int pos_count = 0;
-    int neg_count = 0;
-    for (i = 0; i < sample_store_index; i++)
-        if (sample_storage[i] >= 0) {
-            avg_pos += sample_storage[i];
-            pos_count++;
-        } else {
-            avg_neg += sample_storage[i];
-            neg_count++;
-        }
-    if (pos_count != 0)
-        avg_pos /= pos_count;
-    if (neg_count != 0)
-        avg_neg /= neg_count;
-    *avg_positive_sample = avg_pos;
-    *avg_negative_sample = avg_neg;
-    int diff = (avg_neg + ((avg_pos - avg_neg) / 2));
-    return diff;
+	int i;
+	int64_t avg_neg = 0;
+	int64_t avg_pos = 0;
+	int pos_count = 0;
+	int neg_count = 0;
+	for (i = 0; i < sample_store_index; i++)
+		if (sample_storage[i] >= 0) {
+			avg_pos += sample_storage[i];
+			pos_count++;
+		} else {
+			avg_neg += sample_storage[i];
+			neg_count++;
+		}
+	if (pos_count != 0)
+		avg_pos /= pos_count;
+	if (neg_count != 0)
+		avg_neg /= neg_count;
+	*avg_positive_sample = avg_pos;
+	*avg_negative_sample = avg_neg;
+	int diff = (avg_neg + ((avg_pos - avg_neg) / 2));
+	return diff;
 }
 
 int generate_pulse_count_array(int display_pulse_details, int pulse_count_storage[]) {
 
-    // From empirical analysis with an Elite 3.0 TPM transmitter, sometimes the data can be decoded by counting negative pulses rather than positive
-    // pulses.  It seems that if the first sequence after the preamble is positive pulses, the data can be decoded by parsing using the negative pulse counts.
-    // This flag decoder automatically detect this.
-    int store_positive_pulses = (sample_storage[2] < analysis_wavecenter);
+	// From empirical analysis with an Elite 3.0 TPM transmitter, sometimes the data can be decoded by counting negative pulses rather than positive
+	// pulses.  It seems that if the first sequence after the preamble is positive pulses, the data can be decoded by parsing using the negative pulse counts.
+	// This flag decoder automatically detect this.
+	int store_positive_pulses = (sample_storage[2] < analysis_wavecenter);
 
-    if (display_pulse_details) printf("\nPulse stream for this frame (P-Consecutive samples > center, N-Consecutive samples < center)\n");
+	if (display_pulse_details) printf("\nPulse stream for this frame (P-Consecutive samples > center, N-Consecutive samples < center)\n");
 
-    int wrap_count = 0;
-    int pulse_count = 0;
-    int space_count = 0;
-    int pulse_store_index = 0;
-    int space_store_index = 0;
-    int display_pulse_info = 1;
-    int i;
-    for (i = 0; i < sample_store_index; i++) {
-        int samplec = sample_storage[i] - analysis_wavecenter;
-        if (samplec < 0) {
-            if (pulse_count > 0) {
-                if (store_positive_pulses)
-                    pulse_count_storage[pulse_store_index++] = pulse_count;
-                if (display_pulse_details) printf("%2dP ", pulse_count);
-                wrap_count++;
-            }
-            pulse_count = 0;
-            space_count++;
-        } else {
-            if (space_count > 0) {
-                if (store_positive_pulses == 0)
-                    pulse_count_storage[pulse_store_index++] = space_count;
-                if (display_pulse_details) printf("%2dN ", space_count);
-                wrap_count++;
-            }
-            space_count = 0;
-            pulse_count++;
-        }
-        if (wrap_count >= 16) {
-            if (display_pulse_details) printf("\n");
-            wrap_count = 0;
-        }
-    }
-    if (display_pulse_details) printf("\n\n");
+	int wrap_count = 0;
+	int pulse_count = 0;
+	int space_count = 0;
+	int pulse_store_index = 0;
+	int space_store_index = 0;
+	int display_pulse_info = 1;
+	int i;
+	for (i = 0; i < sample_store_index; i++) {
+		int samplec = sample_storage[i] - analysis_wavecenter;
+		if (samplec < 0) {
+			if (pulse_count > 0) {
+				if (store_positive_pulses)
+					pulse_count_storage[pulse_store_index++] = pulse_count;
+				if (display_pulse_details) printf("%2dP ", pulse_count);
+				wrap_count++;
+			}
+			pulse_count = 0;
+			space_count++;
+		} else {
+			if (space_count > 0) {
+				if (store_positive_pulses == 0)
+					pulse_count_storage[pulse_store_index++] = space_count;
+				if (display_pulse_details) printf("%2dN ", space_count);
+				wrap_count++;
+			}
+			space_count = 0;
+			pulse_count++;
+		}
+		if (wrap_count >= 16) {
+			if (display_pulse_details) printf("\n");
+			wrap_count = 0;
+		}
+	}
+	if (display_pulse_details) printf("\n\n");
 
-    return pulse_store_index;
+	return pulse_store_index;
 }
 
 void display_frame_data(int debug_level, char *msg, unsigned char bytes[], int bytecount) {
 
 #if TARGET_UID > 0
-    // only receive frames that has the targeted UID
-    if (bytecount < 3 || bytes[2] != TARGET_UID) {
-        return;
-    }
+	// only receive frames that has the targeted UID
+	if (bytecount < 3 || bytes[2] != TARGET_UID) {
+		return;
+	}
 #endif
 
-    time_t ltime;
-    char buffer[80];
-    char filename[80];
-    time( &ltime );
-    struct tm *curtime = localtime( &ltime );
-    strftime(buffer, 80, "%x,%X", curtime);
+	time_t ltime;
+	char buffer[80];
+	char filename[80];
+	time( &ltime );
+	struct tm *curtime = localtime( &ltime );
+	strftime(buffer, 80, "%x,%X", curtime);
+	int i;
+	// Some magic here to figure out whether the message has a 1 byte checksum or 2 byte crc
+	char *data_ok_str = (char *) 0;
+	unsigned char checksum = 0;
 
-    // Some magic here to figure out whether the message has a 1 byte checksum or 2 byte crc
-    char *data_ok_str = (char *) 0;
-    unsigned char checksum = 0;
-    uint16_t crc = 0;
-
-    if (bytecount == EXPECTED_BYTECOUNT_IF_CHECKSUM_USED) {
-        checksum = compute_checksum(bytes, bytecount);
-        if (checksum == bytes[bytecount - 1])
-            data_ok_str = "chksum ok";
-    } else if (bytecount == EXPECTED_BYTECOUNT_IF_CRC_USED) {
-        crc = compute_crc(bytes, bytecount);
-        if (crc == ((bytes[bytecount - 2] << 8) | bytes[bytecount - 1]))
-            data_ok_str = "crc ok";
-    }
-
-    double current_adc = (bytes[4] * 256) + bytes[5];
-    double result  = (VOLTAGE * current_adc) / ((double) (32768) / (double) pow(2, (signed char) bytes[6]));
-    if (debug_level > 0) {
-        if (debug_level == 1)
-            printf("%s  %s ", buffer, msg);
-        else
-            printf("%s ", msg);
-
-        int i;
-        for (i = 0; i < bytecount; i++)
-            printf("%02x ", bytes[i]);
-
-        if (data_ok_str != (char *) 0)
-            printf(data_ok_str);
-        else {
-            checksum = compute_checksum(bytes, bytecount);
-            crc = compute_crc(bytes, bytecount);
-            printf(" cksum: %02x crc16: %04x ", checksum, crc);
-        }
-        if (result < 10000)
-            printf("  W: %4.3f\n", result);
-        else {
-            printf("  W: <out of range>\n");
-            if (data_ok_str != (char *) 0)
-                printf("*For Efergy True Power Moniter (TPM), set VOLTAGE=1 before compiling\n");
-        }
-    } else if (data_ok_str != (char *) 0) {
-        printf("%s,%f\n", buffer, result);
-	if(current_day!=curtime->tm_mday){
-            printf("new day\n");
-            if (fp != NULL) {
-                printf("close file\n");
-                fflush(fp);
-                fclose(fp);
-		fp == NULL;
-            }
-		
-            strftime(filename, 80, "/root/log_ecowatt_brut/%y%m%d_ecowatt", curtime);
-            printf("new file : %s\n",filename);
-            fp=fopen(filename, "a");
-            if (fp == NULL) {
-                fprintf(stderr, "\nFailed to open log file!\n");
-            }else{
-                current_day=curtime->tm_mday;
-            }
+	if (bytecount > EXPECTED_BYTECOUNT_IF_CHECKSUM_USED) {
+		bytecount=EXPECTED_BYTECOUNT_IF_CHECKSUM_USED;
 	}
+	checksum = compute_checksum(bytes, bytecount);
+	if (checksum == bytes[bytecount - 1])
+		data_ok_str = "ok";
 
-        if (loggingok) {
-            if (LOGTYPE) {
-                fprintf(fp, "%s,%f\r\n", buffer, result);
-            } else {
-                fprintf(fp, "%s,%f\n", buffer, result);
-            }
-            samplecount++;
-            if (samplecount == SAMPLES_TO_FLUSH) {
-                samplecount = 0;
-                fflush(fp);
-            }
-        }
-        fflush(stdout);
-    } else
-        printf("Checksum/CEC Error.  Enable debug output with -d option\n");
+
+	double current_adc = (bytes[4] * 256) + bytes[5];
+	double result  = (VOLTAGE * current_adc) / ((double) (32768) / (double) pow(2, (signed char) bytes[6]));
+	if (debug_level > 0) {
+		if (debug_level == 1)
+			printf("%s  %s ", buffer, msg);
+		else
+			printf("%s ", msg);
+
+		int i;
+		for (i = 0; i < bytecount; i++)
+			printf("%02x ", bytes[i]);
+
+		if (data_ok_str != (char *) 0)
+			printf(data_ok_str);
+		else {
+			checksum = compute_checksum(bytes, bytecount);
+			printf(" cksum: %02x", checksum);
+		}
+		if (result < 10000)
+			printf("  W: %4.3f\n", result);
+		else {
+			printf("  W: <out of range>\n");
+			if (data_ok_str != (char *) 0)
+				printf("*For Efergy True Power Moniter (TPM), set VOLTAGE=1 before compiling\n");
+		}
+	} else
+	{
+		//if (data_ok_str != (char *) 0) {
+		printf("%s,%f,", buffer, result);
+		for (i = 0; i < bytecount; i++)
+			printf("%02x", bytes[i]);
+		if(data_ok_str == (char *) 0)
+			data_ok_str = "ko";
+		printf( ",%02x,%s\n", checksum,data_ok_str);
+		if (loggingok){
+			if(current_day!=curtime->tm_mday){
+				printf("new day\n");
+				if (fp != NULL) {
+					printf("close file\n");
+					fflush(fp);
+					fclose(fp);
+					fp == NULL;
+				}
+
+
+				strftime(filename, 80, "/root/log_ecowatt_brut/%y%m%d_ecowatt", curtime);
+				printf("new file : %s\n",filename);
+				fp=fopen(filename, "a");
+				if (fp == NULL) {
+					fprintf(stderr, "\nFailed to open log file!\n");
+				}else{
+					current_day=curtime->tm_mday;
+				}
+			}
+
+			fprintf(fp, "%s,%f,", buffer, result);
+
+			for (i = 0; i < bytecount; i++)
+				fprintf(fp, "%02x", bytes[i]);
+			fprintf(fp, ",%02x,%s", checksum,data_ok_str);
+			if (LOGTYPE) {
+				fprintf(fp, "\r\n");
+			} else {
+				fprintf(fp, "\n");
+			}
+			samplecount++;
+			if (samplecount == SAMPLES_TO_FLUSH) {
+				samplecount = 0;
+				fflush(fp);
+			}
+		}
+		fflush(stdout);
+		//} else
+		//	printf("Checksum/CEC Error.  Enable debug output with -d option\n");
+	}
 }
 
 void analyze_efergy_message(int debug_level) {
 
-    // See how balanced/centered the sample data is.  Best case is  diff close to 0
-    int avg_pos, avg_neg;
-    int difference = calculate_wave_center(&avg_pos, &avg_neg);
+	// See how balanced/centered the sample data is.  Best case is  diff close to 0
+	int avg_pos, avg_neg;
+	int difference = calculate_wave_center(&avg_pos, &avg_neg);
 
-    if (debug_level > 1) {
-        time_t ltime;
-        char buffer[80];
-        time( &ltime );
-        struct tm *curtime = localtime( &ltime );
-        strftime(buffer, 80, "%x,%X", curtime);
-        printf("\nAnalysis of rtl_fm sample data for frame received on %s\n", buffer);
-        printf("     Number of Samples: %6d\n", sample_store_index);
-        printf("    Avg. Sample Values: %6d (negative)   %6d (positive)\n", avg_neg, avg_pos);
-        printf("           Wave Center: %6d (this frame) %6d (last frame)\n", difference, analysis_wavecenter);
-    }
-    analysis_wavecenter = difference; // Use the calculated wave center from this sample to process next frame
+	if (debug_level > 1) {
+		time_t ltime;
+		char buffer[80];
+		time( &ltime );
+		struct tm *curtime = localtime( &ltime );
+		strftime(buffer, 80, "%x,%X", curtime);
+		printf("\nAnalysis of rtl_fm sample data for frame received on %s\n", buffer);
+		printf("     Number of Samples: %6d\n", sample_store_index);
+		printf("    Avg. Sample Values: %6d (negative)   %6d (positive)\n", avg_neg, avg_pos);
+		printf("           Wave Center: %6d (this frame) %6d (last frame)\n", difference, analysis_wavecenter);
+	}
+	analysis_wavecenter = difference; // Use the calculated wave center from this sample to process next frame
 
-    if (debug_level == 4) { // Raw Sample Dump only in highest debug level
-        int wrap_count = 0;
-        printf("\nShowing raw rtl_fm sample data received between start of frame and end of frame\n");
-        int i;
-        for (i = 0; i < sample_store_index; i++) {
-            printf("%6d ", sample_storage[i] - analysis_wavecenter);
-            wrap_count++;
-            if (wrap_count >= 16) {
-                printf("\n");
-                wrap_count = 0;
-            }
-        }
-        printf("\n\n");
-    }
+	if (debug_level == 4) { // Raw Sample Dump only in highest debug level
+		int wrap_count = 0;
+		printf("\nShowing raw rtl_fm sample data received between start of frame and end of frame\n");
+		int i;
+		for (i = 0; i < sample_store_index; i++) {
+			printf("%6d ", sample_storage[i] - analysis_wavecenter);
+			wrap_count++;
+			if (wrap_count >= 16) {
+				printf("\n");
+				wrap_count = 0;
+			}
+		}
+		printf("\n\n");
+	}
 
-    int display_pulse_details = (debug_level >= 3 ? 1 : 0);
-    int pulse_count_storage[SAMPLE_STORE_SIZE];
-    int pulse_store_index = generate_pulse_count_array(display_pulse_details, pulse_count_storage);
-    unsigned char bytearray[FRAMEBYTECOUNT];
-    int bytecount = decode_bytes_from_pulse_counts(pulse_count_storage, pulse_store_index, bytearray);
-    char *frame_msg;
-    if (sample_storage[2] < analysis_wavecenter)
-        frame_msg = "Msg:";
-    else
-        frame_msg = "Msg (from negative pulses):";
-    display_frame_data(debug_level, frame_msg, bytearray, bytecount);
+	int display_pulse_details = (debug_level >= 3 ? 1 : 0);
+	int pulse_count_storage[SAMPLE_STORE_SIZE];
+	int pulse_store_index = generate_pulse_count_array(display_pulse_details, pulse_count_storage);
+	unsigned char bytearray[FRAMEBYTECOUNT];
+	int bytecount = decode_bytes_from_pulse_counts(pulse_count_storage, pulse_store_index, bytearray);
+	char *frame_msg;
+	if (sample_storage[2] < analysis_wavecenter)
+		frame_msg = "Msg:";
+	else
+		frame_msg = "Msg (from negative pulses):";
+	display_frame_data(debug_level, frame_msg, bytearray, bytecount);
 
-    if (debug_level > 1) printf("\n");
+	if (debug_level > 1) printf("\n");
 }
 
 void  main (int argc, char**argv)
 {
-    int debug_level = 0;
+	int debug_level = 0;
 
-    // Give rtl_fm program some time to get initialized so its startup messages don't interleave with ours
-    sleep(1);
+	// Give rtl_fm program some time to get initialized so its startup messages don't interleave with ours
+	sleep(1);
 
-    if ((argc == 2) && (strncmp(argv[1], "-h", 2) == 0)) {
-        printf("\nUsage: %s              - Normal mode\n", argv[0]);
-        printf("       %s <filename>   - Normal mode plus log samples to output file\n", argv[0]);
-        printf("       %s -d [1,2,3,4] - Set debug/verbosity.  Default level 0 has minimum output\n", argv[0]);
-        exit(0);
-    } else if ((argc == 3) && (strncmp(argv[1], "-d", 2) == 0)) {
-        debug_level = strtol(argv[2], NULL, 0);
-        if ((debug_level < 1) || (debug_level > 4)) {
-            fprintf(stderr, "\nDebug level (-d option) must be between 1 and 4\n");
-            exit(EXIT_FAILURE);
-        }
-    } else if ((argc == 2) && (strcmp(argv[1], "-d") == 0))
-        debug_level = 3;
-    else if (argc == 2) {
-        //fp = fopen(argv[1], "a"); // Log file opened in append mode to avoid destroying data
-        samplecount = 0; // Reset sample counter
-        loggingok = 1;
-        /*if (fp == NULL) {
+	if ((argc == 2) && (strncmp(argv[1], "-h", 2) == 0)) {
+		printf("\nUsage: %s              - Normal mode\n", argv[0]);
+		printf("       %s <filename>   - Normal mode plus log samples to output file\n", argv[0]);
+		printf("       %s -d [1,2,3,4] - Set debug/verbosity.  Default level 0 has minimum output\n", argv[0]);
+		exit(0);
+	} else if ((argc == 3) && (strncmp(argv[1], "-d", 2) == 0)) {
+		debug_level = strtol(argv[2], NULL, 0);
+		if ((debug_level < 1) || (debug_level > 4)) {
+			fprintf(stderr, "\nDebug level (-d option) must be between 1 and 4\n");
+			exit(EXIT_FAILURE);
+		}
+	} else if ((argc == 2) && (strcmp(argv[1], "-d") == 0))
+		debug_level = 3;
+	else if (argc == 2) {
+		//fp = fopen(argv[1], "a"); // Log file opened in append mode to avoid destroying data
+		samplecount = 0; // Reset sample counter
+		loggingok = 1;
+		/*if (fp == NULL) {
             fprintf(stderr, "\nFailed to open log file!\n");
             exit(EXIT_FAILURE);
         }*/
-    } else {
-        loggingok = 0;
-    }
+	} else {
+		loggingok = 0;
+	}
 
-    if (debug_level > 0)
-        printf("\nEfergy Power Monitor Decoder - (debug level %d)\n\n", debug_level);
-    else
-        printf("\nEfergy Energy Monitor Decoder\n\n");
+	if (debug_level > 0)
+		printf("\nEfergy Power Monitor Decoder - (debug level %d)\n\n", debug_level);
+	else
+		printf("\nEfergy Energy Monitor Decoder\n\n");
 
-    int prvsamp;
-    analysis_wavecenter = 0;
+	int prvsamp;
+	analysis_wavecenter = 0;
 
-    while ( !feof(stdin) ) {
+	while ( !feof(stdin) ) {
 
-        // Look for a valid Efergy Preamble sequence which we'll define as
-        // a sequence of at least MIN_PEAMBLE_SIZE positive and negative or negative and positive pulses. eg 50N+50P or 50P+50N
-        int negative_preamble_count = 0;
-        int positive_preamble_count = 0;
-        prvsamp = 0;
-        while ( !feof(stdin) ) {
-            int cursamp  = (int16_t) (fgetc(stdin) | fgetc(stdin) << 8);
-            // Check for preamble
-            if ((prvsamp >= analysis_wavecenter) && (cursamp >= analysis_wavecenter)) {
-                positive_preamble_count++;
-            } else if ((prvsamp < analysis_wavecenter) && (cursamp < analysis_wavecenter)) {
-                negative_preamble_count++;
-            } else if ((prvsamp >= analysis_wavecenter) && (cursamp < analysis_wavecenter)) {
-                if ((positive_preamble_count > MIN_POSITIVE_PREAMBLE_SAMPLES) &&
-                        (negative_preamble_count > MIN_NEGATIVE_PREAMBLE_SAMPLES))
-                    break;
-                negative_preamble_count = 0;
-            } else if ((prvsamp < analysis_wavecenter) && (cursamp >= analysis_wavecenter)) {
-                if ((positive_preamble_count > MIN_POSITIVE_PREAMBLE_SAMPLES) &&
-                        (negative_preamble_count > MIN_NEGATIVE_PREAMBLE_SAMPLES))
-                    break;
-                positive_preamble_count = 0;
-            }
-            prvsamp = cursamp;
-        } // end of find preamble while loop
+		// Look for a valid Efergy Preamble sequence which we'll define as
+		// a sequence of at least MIN_PEAMBLE_SIZE positive and negative or negative and positive pulses. eg 50N+50P or 50P+50N
+		int negative_preamble_count = 0;
+		int positive_preamble_count = 0;
+		prvsamp = 0;
+		while ( !feof(stdin) ) {
+			int cursamp  = (int16_t) (fgetc(stdin) | fgetc(stdin) << 8);
+			// Check for preamble
+			if ((prvsamp >= analysis_wavecenter) && (cursamp >= analysis_wavecenter)) {
+				positive_preamble_count++;
+			} else if ((prvsamp < analysis_wavecenter) && (cursamp < analysis_wavecenter)) {
+				negative_preamble_count++;
+			} else if ((prvsamp >= analysis_wavecenter) && (cursamp < analysis_wavecenter)) {
+				if ((positive_preamble_count > MIN_POSITIVE_PREAMBLE_SAMPLES) &&
+						(negative_preamble_count > MIN_NEGATIVE_PREAMBLE_SAMPLES))
+					break;
+				negative_preamble_count = 0;
+			} else if ((prvsamp < analysis_wavecenter) && (cursamp >= analysis_wavecenter)) {
+				if ((positive_preamble_count > MIN_POSITIVE_PREAMBLE_SAMPLES) &&
+						(negative_preamble_count > MIN_NEGATIVE_PREAMBLE_SAMPLES))
+					break;
+				positive_preamble_count = 0;
+			}
+			prvsamp = cursamp;
+		} // end of find preamble while loop
 
-        sample_store_index = 0;
-        while ( !feof(stdin) ) {
-            int cursamp  = (int16_t) (fgetc(stdin) | fgetc(stdin) << 8);
-            sample_storage[sample_store_index] = cursamp;
-            if (sample_store_index < (SAMPLE_STORE_SIZE - 1))
-                sample_store_index++;
-            else {
-                analyze_efergy_message(debug_level);
-                break;
-            }
-        } // Frame processing while
-    } // outermost while
+		sample_store_index = 0;
+		while ( !feof(stdin) ) {
+			int cursamp  = (int16_t) (fgetc(stdin) | fgetc(stdin) << 8);
+			sample_storage[sample_store_index] = cursamp;
+			if (sample_store_index < (SAMPLE_STORE_SIZE - 1))
+				sample_store_index++;
+			else {
+				analyze_efergy_message(debug_level);
+				break;
+			}
+		} // Frame processing while
+	} // outermost while
 
-    if (loggingok) {
-        fclose(fp); // If rtl-fm gives EOF and program terminates, close file gracefully.
-    }
+	if (loggingok) {
+		fclose(fp); // If rtl-fm gives EOF and program terminates, close file gracefully.
+	}
 }

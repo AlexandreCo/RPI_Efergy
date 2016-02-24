@@ -369,7 +369,7 @@ void display_frame_data(int debug_level, char *msg, unsigned char bytes[], int b
 		fp == NULL;
             }
 		
-            strftime(filename, 80, "/home/pi/log_ecowatt_brut/%y%m%d_ecowatt", curtime);
+            strftime(filename, 80, "/root/log_ecowatt_brut/%y%m%d_ecowatt", curtime);
             printf("new file : %s\n",filename);
             fp=fopen(filename, "a");
             if (fp == NULL) {
